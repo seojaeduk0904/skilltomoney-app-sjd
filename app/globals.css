@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+:root {
+  --background: #070d1e;
+  --foreground: #e2e8f0;
+}
+
+body {
+  background: linear-gradient(180deg, #070d1e 0%, #0c1833 40%, #0a142c 100%);
+  color: #e2e8f0;
+  font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans KR", sans-serif;
+  min-height: 100vh;
+}
+
+.gold-text {
+  color: #d4af37;
+  background: linear-gradient(135deg, #fff3b0 0%, #ffd700 35%, #d4af37 70%, #aa7c11 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gold-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: rgba(212, 175, 55, 0.1);
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  border-radius: 9999px;
+  color: #ffd700;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
