@@ -23,33 +23,104 @@ export default function HomePage() {
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [userName, setUserName] = useState("");
   const [userPhone, setUserPhone] = useState("");
-  const [isReserved, setIsReserved] = useState(false);
+  const [headcount, setHeadcount] = useState("1");
   const [onlyAvailable, setOnlyAvailable] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isSuccess, setIsSuccess] = useState(false);
 
   const displayedCourses = onlyAvailable
     ? courses.filter((course) => course.seat - course.booked > 0)
     : courses;
 
   const handleOpenModal = (course: Course) => {
-    if (course.seat - course.booked <= 0) return;
     setSelectedCourse(course);
-    setIsReserved(false);
     setUserName("");
     setUserPhone("");
+    setHeadcount("1");
+    setIsSubmitting(false);
+    setErrorMessage("");
+    setIsSuccess(false);
   };
 
   const handleCloseModal = () => {
     setSelectedCourse(null);
-    setIsReserved(false);
+    setIsSubmitting(false);
+    setErrorMessage("");
+    setIsSuccess(false);
   };
 
-  const handleSubmitReservation = (e: React.FormEvent) => {
+  const handleSubmitReservation = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userName.trim() || !userPhone.trim()) {
-      alert("이름과 연락처를 입력해 주세요.");
+    if (!selectedCourse) return;
+
+    setErrorMessage("");
+
+    // 1) 이름이 비어 있는지 검사
+    if (!userName.trim()) {
+      const msg = "이름을 입력해 주세요.";
+      setErrorMessage(msg);
+      alert(msg);
       return;
     }
-    setIsReserved(true);
+
+    // 2) 인원 수 유효성 검사
+    const count = parseInt(headcount, 10);
+    if (!headcount.trim() || isNaN(count) || count < 1) {
+      const msg = "인원을 1명 이상 입력해 주세요.";
+      setErrorMessage(msg);
+      alert(msg);
+      return;
+    }
+
+    // 3) 인원이 남은 자리보다 많은지 검사
+    const remainingSeats = selectedCourse.seat - selectedCourse.booked;
+    if (count > remainingSeats) {
+      const msg = `인원이 남은 자리(${remainingSeats}석)보다 많습니다.`;
+      setErrorMessage(msg);
+      alert(msg);
+      return;
+    }
+
+    // 4) 연락처 검사
+    if (!userPhone.trim()) {
+      const msg = "연락처를 입력해 주세요.";
+      setErrorMessage(msg);
+      alert(msg);
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      const res = await fetch("/api/reserve", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          courseId: selectedCourse.id,
+          course: selectedCourse.name,
+          date: selectedCourse.date,
+          name: userName.trim(),
+          phone: userPhone.trim(),
+          people: count,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "예약 신청에 실패했습니다.");
+      }
+
+      // 성공 시 "예약 신청이 완료되었습니다" 화면 표시
+      setIsSuccess(true);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "예약 신청 처리 중 오류가 발생했습니다.";
+      setErrorMessage(msg);
+      alert(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -400,147 +471,197 @@ export default function HomePage() {
 
       {/* 예약 신청 모달 팝업 */}
       {selectedCourse && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) handleCloseModal();
+          }}
+        >
           <div className="relative w-full max-w-md rounded-2xl bg-[#0f1c3d] border border-[#ffd700]/50 shadow-[0_20px_50px_rgba(0,0,0,0.8),0_0_30px_rgba(212,175,55,0.25)] overflow-hidden">
             <div className="h-1.5 w-full bg-gradient-to-r from-[#ffd700] via-[#ffb703] to-[#d4af37]" />
 
             <div className="p-6">
-              {/* 모달 닫기 버튼 */}
-              <button
-                type="button"
-                onClick={handleCloseModal}
-                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-slate-800 text-slate-300 hover:text-white flex items-center justify-center text-sm cursor-pointer"
-              >
-                ✕
-              </button>
-
-              {!isReserved ? (
-                <>
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold text-[#ffd700] bg-[#ffd700]/15 border border-[#ffd700]/30 mb-3">
-                    강좌 예약 신청
-                  </div>
-
-                  <h3 className="text-2xl font-black text-white mb-1.5">
-                    {selectedCourse.name}
+              {/* 모달 헤더 */}
+              <div className="flex items-center justify-between mb-5 pb-3 border-b border-white/10">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#ffd700]" />
+                  <h3 className="text-xl font-black text-white">
+                    예약 신청
                   </h3>
-                  <div className="flex flex-wrap gap-1.5 mb-3">
-                    {selectedCourse.tags?.map((tag, idx) => (
-                      <span
-                        key={idx}
-                        className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-[#ffd700]/15 text-[#ffd700] border border-[#ffd700]/30"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                  <p className="text-xs text-slate-400 mb-4">
-                    원데이 올인원 라이브 클래스 (정원 {selectedCourse.seat}명)
-                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCloseModal}
+                  className="w-8 h-8 rounded-full bg-slate-800 text-slate-300 hover:text-white flex items-center justify-center text-sm cursor-pointer transition-colors"
+                  aria-label="닫기"
+                >
+                  ✕
+                </button>
+              </div>
 
-                  <div className="bg-[#081229] p-4 rounded-xl border border-white/10 mb-5">
-                    <div className="flex justify-between items-center mb-2 text-xs">
-                      <span className="text-slate-400">일정</span>
-                      <span className="font-semibold text-slate-200">
-                        {selectedCourse.schedule || selectedCourse.date}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center mb-2 text-xs">
-                      <span className="text-slate-400">좌석 현황</span>
-                      <span
-                        className={`font-bold ${
-                          selectedCourse.seat - selectedCourse.booked === 0
-                            ? "text-rose-400"
-                            : "text-[#ffd700]"
-                        }`}
-                      >
-                        남은 좌석 {selectedCourse.seat - selectedCourse.booked}석 / 정원{" "}
-                        {selectedCourse.seat}명
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-slate-400">최종 수강료</span>
-                      <span className="text-lg font-black text-[#ffd700]">
-                        {selectedCourse.price.toLocaleString()}원
-                      </span>
-                    </div>
-                  </div>
-
-                  <form onSubmit={handleSubmitReservation} className="space-y-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                        예약자 이름
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="홍길동"
-                        value={userName}
-                        onChange={(e) => setUserName(e.target.value)}
-                        className="w-full px-3.5 py-2.5 rounded-lg bg-[#070d1e] border border-white/20 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-[#ffd700] focus:ring-1 focus:ring-[#ffd700]"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                        휴대폰 번호 (수강 안내 링크 발송)
-                      </label>
-                      <input
-                        type="tel"
-                        required
-                        placeholder="010-1234-5678"
-                        value={userPhone}
-                        onChange={(e) => setUserPhone(e.target.value)}
-                        className="w-full px-3.5 py-2.5 rounded-lg bg-[#070d1e] border border-white/20 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-[#ffd700] focus:ring-1 focus:ring-[#ffd700]"
-                      />
-                    </div>
-
-                    <p className="text-[11px] text-slate-400 leading-relaxed">
-                      * 예약 접수 후 담당 멘토가 안내 문자 및 라이브 참여 링크를 발송해 드립니다.
-                    </p>
-
-                    <div className="flex gap-2 pt-2">
-                      <button
-                        type="button"
-                        onClick={handleCloseModal}
-                        className="flex-1 py-3 rounded-xl border border-slate-700 bg-slate-800 text-slate-300 text-sm font-semibold hover:bg-slate-700 cursor-pointer"
-                      >
-                        취소
-                      </button>
-                      <button
-                        type="submit"
-                        className="flex-2 py-3 rounded-xl font-black text-[#070d1e] bg-gradient-to-r from-[#ffd700] via-[#ffc720] to-[#f39c12] hover:from-[#ffdf33] hover:to-[#f7ab2c] text-sm shadow-md shadow-[#ffd700]/30 cursor-pointer"
-                      >
-                        예약 접수 완료
-                      </button>
-                    </div>
-                  </form>
-                </>
-              ) : (
-                <div className="text-center py-4">
-                  <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-[#ffd700]/20 border border-[#ffd700] flex items-center justify-center text-2xl">
+              {isSuccess ? (
+                /* 예약 신청 성공 화면 */
+                <div className="text-center py-6">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-3xl">
                     🎉
                   </div>
-                  <h4 className="text-xl font-black text-white mb-2">
-                    예약 신청이 접수되었습니다!
+                  <h4 className="text-2xl font-black text-white mb-2">
+                    예약 신청이 완료되었습니다
                   </h4>
-                  <p className="text-xs text-slate-300 leading-relaxed mb-4">
+                  <p className="text-xs text-slate-300 leading-relaxed mb-6">
                     <strong className="text-[#ffd700]">{userName}</strong>님,{" "}
-                    <strong className="text-white">[{selectedCourse.name}]</strong> 강좌 예약이
-                    정상 접수되었습니다.
+                    <strong className="text-white">[{selectedCourse.name}]</strong> 강좌 예약이 정상 접수되었습니다.
                     <br />
-                    입력하신 연락처({userPhone})로 30분 내 결제 안내 및 참가 링크가 발송됩니다.
+                    (신청 인원: {headcount}명 / 일자: {selectedCourse.date})
                   </p>
-                  <div className="p-3 bg-[#081229] rounded-xl border border-white/10 text-xs text-slate-400 mb-5">
-                    수강료: <span className="font-bold text-[#ffd700]">{selectedCourse.price.toLocaleString()}원</span>
-                  </div>
                   <button
                     type="button"
                     onClick={handleCloseModal}
-                    className="w-full py-3 rounded-xl font-bold text-[#070d1e] bg-gradient-to-r from-[#ffd700] to-[#e6a817] hover:from-[#ffdf33] hover:to-[#f3b31e] text-sm cursor-pointer"
+                    className="w-full py-3 px-4 rounded-xl font-bold text-[#070d1e] bg-gradient-to-r from-[#ffd700] to-[#e6a817] hover:from-[#ffdf33] hover:to-[#f3b31e] text-sm cursor-pointer transition-all"
                   >
-                    확인
+                    닫기
                   </button>
                 </div>
+              ) : (
+                <form onSubmit={handleSubmitReservation} className="space-y-4">
+                  {/* 안내 문구 (에러 발생 시 표시) */}
+                  {errorMessage && (
+                    <div
+                      role="alert"
+                      className="p-3 rounded-xl bg-rose-950/80 border border-rose-500/60 text-rose-300 text-xs font-semibold flex items-center gap-2 animate-in fade-in"
+                    >
+                      <span>⚠️</span>
+                      <span>{errorMessage}</span>
+                    </div>
+                  )}
+
+                  {/* 강좌 이름 (카드에서 자동 채움) */}
+                  <div>
+                    <label
+                      htmlFor="course-name"
+                      className="block text-xs font-bold text-slate-300 mb-1.5"
+                    >
+                      강좌 이름
+                    </label>
+                    <input
+                      id="course-name"
+                      name="courseName"
+                      type="text"
+                      value={selectedCourse.name}
+                      readOnly
+                      className="w-full px-3.5 py-2.5 rounded-lg bg-[#070d1e]/80 border border-white/15 text-slate-200 text-sm font-semibold focus:outline-none cursor-default"
+                    />
+                  </div>
+
+                  {/* 날짜 (카드에서 자동 채움) */}
+                  <div>
+                    <label
+                      htmlFor="course-date"
+                      className="block text-xs font-bold text-slate-300 mb-1.5"
+                    >
+                      날짜
+                    </label>
+                    <input
+                      id="course-date"
+                      name="courseDate"
+                      type="text"
+                      value={selectedCourse.date}
+                      readOnly
+                      className="w-full px-3.5 py-2.5 rounded-lg bg-[#070d1e]/80 border border-white/15 text-slate-200 text-sm font-semibold focus:outline-none cursor-default"
+                    />
+                  </div>
+
+                  {/* 이름 */}
+                  <div>
+                    <label
+                      htmlFor="user-name"
+                      className="block text-xs font-bold text-slate-300 mb-1.5"
+                    >
+                      이름
+                    </label>
+                    <input
+                      id="user-name"
+                      name="userName"
+                      type="text"
+                      placeholder="이름을 입력하세요"
+                      value={userName}
+                      onChange={(e) => {
+                        setUserName(e.target.value);
+                        if (errorMessage) setErrorMessage("");
+                      }}
+                      className="w-full px-3.5 py-2.5 rounded-lg bg-[#070d1e] border border-white/20 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-[#ffd700] focus:ring-1 focus:ring-[#ffd700]"
+                    />
+                  </div>
+
+                  {/* 연락처 */}
+                  <div>
+                    <label
+                      htmlFor="user-phone"
+                      className="block text-xs font-bold text-slate-300 mb-1.5"
+                    >
+                      연락처
+                    </label>
+                    <input
+                      id="user-phone"
+                      name="userPhone"
+                      type="tel"
+                      placeholder="010-1234-5678"
+                      value={userPhone}
+                      onChange={(e) => {
+                        setUserPhone(e.target.value);
+                        if (errorMessage) setErrorMessage("");
+                      }}
+                      className="w-full px-3.5 py-2.5 rounded-lg bg-[#070d1e] border border-white/20 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-[#ffd700] focus:ring-1 focus:ring-[#ffd700]"
+                    />
+                  </div>
+
+                  {/* 인원(숫자) */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label
+                        htmlFor="user-headcount"
+                        className="block text-xs font-bold text-slate-300"
+                      >
+                        인원
+                      </label>
+                      <span className="text-[11px] text-slate-400">
+                        남은 자리: {selectedCourse.seat - selectedCourse.booked}석
+                      </span>
+                    </div>
+                    <input
+                      id="user-headcount"
+                      name="headcount"
+                      type="number"
+                      min="1"
+                      placeholder="인원 수를 입력하세요 (숫자)"
+                      value={headcount}
+                      onChange={(e) => {
+                        setHeadcount(e.target.value);
+                        if (errorMessage) setErrorMessage("");
+                      }}
+                      className="w-full px-3.5 py-2.5 rounded-lg bg-[#070d1e] border border-white/20 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-[#ffd700] focus:ring-1 focus:ring-[#ffd700]"
+                    />
+                  </div>
+
+                  {/* 아래에 [신청]과 [닫기] 버튼 */}
+                  <div className="flex gap-3 pt-3 border-t border-white/10">
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="flex-1 py-3 px-4 rounded-xl font-extrabold text-[#070d1e] bg-gradient-to-r from-[#ffd700] via-[#ffc720] to-[#f39c12] hover:from-[#ffdf33] hover:to-[#f7ab2c] disabled:opacity-50 disabled:cursor-not-allowed text-sm shadow-md shadow-[#ffd700]/30 transition-all cursor-pointer"
+                    >
+                      {isSubmitting ? "저장 중..." : "신청"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCloseModal}
+                      disabled={isSubmitting}
+                      className="flex-1 py-3 px-4 rounded-xl border border-slate-700 bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold transition-colors cursor-pointer"
+                    >
+                      닫기
+                    </button>
+                  </div>
+                </form>
               )}
             </div>
           </div>
